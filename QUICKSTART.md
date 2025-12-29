@@ -1,52 +1,71 @@
-# Quick Start Guide - Reticulum Update Installer
+# RNS Management Tool - Quick Start Guide
 
-## TL;DR - Get Started in 30 Seconds
+Get up and running with Reticulum in under 5 minutes!
+
+## 🚀 Installation
+
+### Raspberry Pi / Linux (One-Line Install)
 
 ```bash
+wget -O - https://raw.githubusercontent.com/Nursedude/RNS-updater/main/rns_management_tool.sh | bash
+```
+
+**Or step-by-step:**
+
+```bash
+# Download
+wget https://raw.githubusercontent.com/Nursedude/RNS-updater/main/rns_management_tool.sh
+
+# Make executable
+chmod +x rns_management_tool.sh
+
+# Run
+./rns_management_tool.sh
+```
+
+### Windows 11 (PowerShell)
+
+```powershell
+# Open PowerShell as Administrator
 # Download and run
-wget https://raw.githubusercontent.com/Nursedude/RNS-updater/main/reticulum_updater.sh
-chmod +x reticulum_updater.sh
-./reticulum_updater.sh
+iwr -useb https://raw.githubusercontent.com/Nursedude/RNS-updater/main/rns_management_tool.ps1 | iex
 ```
 
-Then follow the on-screen prompts!
+**Or step-by-step:**
 
----
+```powershell
+# Download
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Nursedude/RNS-updater/main/rns_management_tool.ps1" -OutFile "rns_management_tool.ps1"
 
-## What You'll See
+# Allow execution
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
-### 1. Welcome Screen
-```
-============================================
-  Reticulum Ecosystem Update Installer
-============================================
-
->>> Checking Python Installation
-
-✓ Python3 found: 3.11.2
+# Run
+.\rns_management_tool.ps1
 ```
 
-### 2. Version Check
-```
->>> Checking Installed Components
+## 📖 First-Time Setup
 
-ℹ RNS (Reticulum) is installed: version 1.0.4
-ℹ LXMF is installed: version 0.3.8
-ℹ Nomad Network is installed: version 0.4.5
-⚠ MeshChat is not installed
-```
+### Option 1: Complete Installation (Recommended)
 
-### 3. Backup Prompt
-```
->>> Creating Backup
+1. **Run the tool**
+   ```bash
+   ./rns_management_tool.sh    # Linux/Pi
+   .\rns_management_tool.ps1   # Windows
+   ```
 
-Do you want to create a backup before updating? (recommended)
-Backup will include configuration files from:
-  - ~/.reticulum/
-  - ~/.nomadnetwork/
-  - ~/.lxmf/
-Create backup? (Y/n):
-```
+2. **Select Option 1** - Install/Update Reticulum Ecosystem
+
+3. **Follow the prompts:**
+   - ✅ Update system packages? **Y** (recommended)
+   - ✅ Create backup? **Y** (if you have existing config)
+   - ✅ Install NomadNet? **Y** (for terminal client)
+
+4. **Wait for installation** (2-5 minutes depending on your system)
+
+5. **Start the daemon** when prompted: **Y**
+
+6. **Done!** You now have a working Reticulum node
 
 **Recommendation:** Press Enter (defaults to Yes)
 
