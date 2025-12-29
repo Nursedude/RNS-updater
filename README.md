@@ -4,7 +4,7 @@
 
 A comprehensive, cross-platform management tool for the Reticulum ecosystem, featuring automated installation, configuration, and maintenance capabilities for Raspberry Pi, Linux, Windows 11, and WSL environments.
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
+![Version](https://img.shields.io/badge/version-2.1.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20RaspberryPi-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -384,7 +384,17 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 📅 Version History
 
-### Version 2.0.0 (Current)
+### Version 2.1.0 (Current)
+- ✨ **Quick Status Dashboard** - See rnsd and RNS status at a glance on main menu
+- ✨ **Organized Menu Sections** - Installation, Management, and System categories
+- 🔒 **Security Fixes** - Replaced unsafe `eval` with array-based command execution
+- 🔒 **Input Validation** - Device port and radio parameter validation
+- 🔧 **Export/Import Configuration** - Portable backup archives (.tar.gz)
+- 🔧 **Factory Reset** - Complete configuration reset with safety backup
+- 🔧 **Windows Parity** - Added NomadNet install, diagnostics to PowerShell script
+- 🐛 **Portability Fix** - Replaced `grep -oP` with portable `sed` alternatives
+
+### Version 2.0.0
 - ✨ Complete UI overhaul with interactive menus
 - ✨ Windows 11 support with PowerShell installer
 - ✨ WSL detection and integration
