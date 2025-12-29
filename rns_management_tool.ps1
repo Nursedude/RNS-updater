@@ -13,7 +13,7 @@
 #Requires -Version 5.1
 
 # Script configuration
-$Script:Version = "2.0.0"
+$Script:Version = "2.1.0"
 $Script:LogFile = Join-Path $env:USERPROFILE "rns_management_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 $Script:BackupDir = Join-Path $env:USERPROFILE ".reticulum_backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
 $Script:NeedsReboot = $false
@@ -411,6 +411,122 @@ function Install-Sideband {
     pause
 }
 
+function Install-NomadNet {
+    Show-Section "Installing NomadNet"
+
+    if (-not (Test-Python)) {
+        Write-ColorOutput "Python is required but not installed" "Error"
+        $install = Read-Host "Would you like to install Python now? (Y/n)"
+        if ($install -ne 'n' -and $install -ne 'N') {
+            Install-Python
+            return
+        }
+    }
+
+    Write-ColorOutput "Installing NomadNet terminal client..." "Progress"
+
+    $pip = "pip"
+    if (Get-Command pip3 -ErrorAction SilentlyContinue) {
+        $pip = "pip3"
+    }
+
+    & $pip install nomadnet --upgrade 2>&1 | Out-File -FilePath $Script:LogFile -Append
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-ColorOutput "NomadNet installed successfully" "Success"
+        Write-Host ""
+        Write-Host "Run 'nomadnet' to start the terminal client" -ForegroundColor Yellow
+    } else {
+        Write-ColorOutput "Failed to install NomadNet" "Error"
+    }
+
+    pause
+}
+
+function Show-Diagnostics {
+    Show-Section "System Diagnostics"
+
+    Write-Host "Running comprehensive system check..." -ForegroundColor Cyan
+    Write-Host ""
+
+    # Environment info
+    Write-Host "Environment:" -ForegroundColor Cyan
+    Write-Host "  Platform:      Windows $([Environment]::OSVersion.Version.Major).$([Environment]::OSVersion.Version.Minor)"
+    Write-Host "  Architecture:  $env:PROCESSOR_ARCHITECTURE"
+    Write-Host "  User:          $env:USERNAME"
+    Write-Host ""
+
+    # Python check
+    Write-Host "Python Environment:" -ForegroundColor Cyan
+    $python = Get-Command python -ErrorAction SilentlyContinue
+    if ($python) {
+        $version = & python --version 2>&1
+        Write-Host "  Version:       $version"
+        Write-Host "  Location:      $($python.Source)"
+    } else {
+        Write-Host "  Status:        Not installed" -ForegroundColor Yellow
+    }
+    Write-Host ""
+
+    # pip check
+    Write-Host "Package Manager:" -ForegroundColor Cyan
+    $pip = Get-Command pip -ErrorAction SilentlyContinue
+    if ($pip) {
+        $version = & pip --version 2>&1
+        Write-Host "  $version"
+    } else {
+        Write-Host "  Status:        pip not found" -ForegroundColor Yellow
+    }
+    Write-Host ""
+
+    # WSL check
+    Write-Host "WSL Status:" -ForegroundColor Cyan
+    if (Get-Command wsl -ErrorAction SilentlyContinue) {
+        $distros = Get-WSLDistributions
+        if ($distros.Count -gt 0) {
+            Write-Host "  Status:        Available" -ForegroundColor Green
+            Write-Host "  Distributions: $($distros -join ', ')"
+        } else {
+            Write-Host "  Status:        Installed but no distributions" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "  Status:        Not installed" -ForegroundColor Yellow
+    }
+    Write-Host ""
+
+    # Reticulum config
+    Write-Host "Reticulum Configuration:" -ForegroundColor Cyan
+    $reticulumDir = Join-Path $env:USERPROFILE ".reticulum"
+    if (Test-Path $reticulumDir) {
+        Write-ColorOutput "Config directory exists: $reticulumDir" "Success"
+    } else {
+        Write-Host "  Config:        Not configured" -ForegroundColor Yellow
+        Write-Host "  Run 'rnsd --daemon' to create initial configuration"
+    }
+    Write-Host ""
+
+    # Show detailed status
+    Show-Status
+}
+
+function Show-BackupMenu {
+    Show-Section "Backup/Restore Configuration"
+
+    Write-Host "Options:" -ForegroundColor Cyan
+    Write-Host "  1) Create backup"
+    Write-Host "  2) Restore backup"
+    Write-Host "  0) Back"
+    Write-Host ""
+
+    $choice = Read-Host "Select option"
+
+    switch ($choice) {
+        "1" { New-Backup }
+        "2" { Restore-Backup }
+        "0" { return }
+    }
+}
+
 #########################################################
 # Service Management
 #########################################################
@@ -605,24 +721,83 @@ function Restore-Backup {
 # Main Menu
 #########################################################
 
+function Show-QuickStatus {
+    Write-Host "┌─────────────────────────────────────────────────────────┐" -ForegroundColor White
+    Write-Host "│  " -ForegroundColor White -NoNewline
+    Write-Host "Quick Status" -ForegroundColor Cyan -NoNewline
+    Write-Host "                                           │" -ForegroundColor White
+
+    Write-Host "├─────────────────────────────────────────────────────────┤" -ForegroundColor White
+
+    # Check rnsd status
+    $rnsdProcess = Get-Process -Name "rnsd" -ErrorAction SilentlyContinue
+    Write-Host "│  " -ForegroundColor White -NoNewline
+    if ($rnsdProcess) {
+        Write-Host "●" -ForegroundColor Green -NoNewline
+        Write-Host " rnsd daemon: " -NoNewline
+        Write-Host "Running" -ForegroundColor Green -NoNewline
+    } else {
+        Write-Host "○" -ForegroundColor Red -NoNewline
+        Write-Host " rnsd daemon: " -NoNewline
+        Write-Host "Stopped" -ForegroundColor Yellow -NoNewline
+    }
+    Write-Host "                               │" -ForegroundColor White
+
+    # Check RNS installed
+    $pip = "pip"
+    if (Get-Command pip3 -ErrorAction SilentlyContinue) { $pip = "pip3" }
+
+    Write-Host "│  " -ForegroundColor White -NoNewline
+    try {
+        $rnsVersion = & $pip show rns 2>$null | Select-String "Version:" | ForEach-Object { $_ -replace "Version:\s*", "" }
+        if ($rnsVersion) {
+            Write-Host "●" -ForegroundColor Green -NoNewline
+            Write-Host " RNS: v$rnsVersion" -NoNewline
+            Write-Host "                                          │" -ForegroundColor White
+        } else {
+            Write-Host "○" -ForegroundColor Yellow -NoNewline
+            Write-Host " RNS: " -NoNewline
+            Write-Host "Not installed" -ForegroundColor Yellow -NoNewline
+            Write-Host "                                 │" -ForegroundColor White
+        }
+    } catch {
+        Write-Host "○" -ForegroundColor Yellow -NoNewline
+        Write-Host " RNS: " -NoNewline
+        Write-Host "Not installed" -ForegroundColor Yellow -NoNewline
+        Write-Host "                                 │" -ForegroundColor White
+    }
+
+    Write-Host "└─────────────────────────────────────────────────────────┘" -ForegroundColor White
+    Write-Host ""
+}
+
 function Show-MainMenu {
     Show-Header
+    Show-QuickStatus
 
     Write-Host "Main Menu:" -ForegroundColor Cyan
     Write-Host ""
+    Write-Host "  ─── Installation ───" -ForegroundColor Cyan
     Write-Host "  1) Install/Update Reticulum Ecosystem"
     Write-Host "  2) Install/Update via WSL"
     Write-Host "  3) Install/Configure RNODE"
     Write-Host "  4) Install Sideband"
-    Write-Host "  5) System Status"
-    Write-Host "  6) Start rnsd Daemon"
-    Write-Host "  7) Stop rnsd Daemon"
-    Write-Host "  8) Backup Configuration"
-    Write-Host "  9) Restore Configuration"
+    Write-Host "  5) Install NomadNet"
+    Write-Host ""
+    Write-Host "  ─── Management ───" -ForegroundColor Cyan
+    Write-Host "  6) System Status & Diagnostics"
+    Write-Host "  7) Start rnsd Daemon"
+    Write-Host "  8) Stop rnsd Daemon"
+    Write-Host "  9) Backup/Restore Configuration"
+    Write-Host ""
+    Write-Host "  ─── System ───" -ForegroundColor Cyan
     Write-Host "  0) Exit"
     Write-Host ""
+    Write-Host "Tip: " -ForegroundColor Yellow -NoNewline
+    Write-Host "Run option 6 for detailed system diagnostics"
+    Write-Host ""
 
-    $choice = Read-Host "Select an option"
+    $choice = Read-Host "Select an option [0-9]"
     return $choice
 }
 
@@ -645,14 +820,17 @@ function Main {
             "2" { Install-Reticulum -UseWSL $true }
             "3" { Install-RNODE }
             "4" { Install-Sideband }
-            "5" { Show-Status }
-            "6" { Start-RNSDaemon }
-            "7" { Stop-RNSDaemon }
-            "8" { New-Backup }
-            "9" { Restore-Backup }
+            "5" { Install-NomadNet }
+            "6" { Show-Diagnostics }
+            "7" { Start-RNSDaemon }
+            "8" { Stop-RNSDaemon }
+            "9" { Show-BackupMenu }
             "0" {
                 Write-Host ""
-                Write-ColorOutput "Thank you for using RNS Management Tool!" "Info"
+                Write-Host "┌─────────────────────────────────────────────────────────┐" -ForegroundColor Cyan
+                Write-Host "│  Thank you for using RNS Management Tool!              │" -ForegroundColor Cyan
+                Write-Host "│  Visit: github.com/Nursedude/RNS-Management-Tool       │" -ForegroundColor Cyan
+                Write-Host "└─────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
                 Write-Host ""
                 "=== RNS Management Tool Ended ===" | Out-File -FilePath $Script:LogFile -Append
                 exit 0

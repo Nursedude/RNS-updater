@@ -26,7 +26,7 @@ NC='\033[0m' # No Color
 BOLD='\033[1m'
 
 # Global variables
-SCRIPT_VERSION="2.0.0"
+SCRIPT_VERSION="2.1.0"
 BACKUP_DIR="$HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)"
 UPDATE_LOG="$HOME/rns_management_$(date +%Y%m%d_%H%M%S).log"
 MESHCHAT_DIR="$HOME/reticulum-meshchat"
@@ -79,7 +79,7 @@ print_header() {
     clear
     echo -e "\n${CYAN}${BOLD}╔════════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}${BOLD}║                                                        ║${NC}"
-    echo -e "${CYAN}${BOLD}║           RNS MANAGEMENT TOOL v${SCRIPT_VERSION}                ║${NC}"
+    echo -e "${CYAN}${BOLD}║          RNS MANAGEMENT TOOL v${SCRIPT_VERSION}                 ║${NC}"
     echo -e "${CYAN}${BOLD}║     Complete Reticulum Network Stack Manager           ║${NC}"
     echo -e "${CYAN}${BOLD}║                                                        ║${NC}"
     echo -e "${CYAN}${BOLD}╚════════════════════════════════════════════════════════╝${NC}\n"
@@ -158,19 +158,51 @@ show_spinner() {
 
 show_main_menu() {
     print_header
-    echo -e "${BOLD}Main Menu:${NC}\n"
+
+    # Quick status dashboard
+    echo -e "${BOLD}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${BOLD}│${NC}  ${CYAN}Quick Status${NC}                                           ${BOLD}│${NC}"
+    echo -e "${BOLD}├─────────────────────────────────────────────────────────┤${NC}"
+
+    # Check rnsd status inline
+    if pgrep -f "rnsd" > /dev/null 2>&1; then
+        echo -e "${BOLD}│${NC}  ${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}                               ${BOLD}│${NC}"
+    else
+        echo -e "${BOLD}│${NC}  ${RED}○${NC} rnsd daemon: ${YELLOW}Stopped${NC}                               ${BOLD}│${NC}"
+    fi
+
+    # Check RNS installed
+    if command -v rnstatus &> /dev/null; then
+        RNS_V=$(pip3 show rns 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "?")
+        echo -e "${BOLD}│${NC}  ${GREEN}●${NC} RNS: v${RNS_V}                                          ${BOLD}│${NC}"
+    else
+        echo -e "${BOLD}│${NC}  ${YELLOW}○${NC} RNS: ${YELLOW}Not installed${NC}                                 ${BOLD}│${NC}"
+    fi
+
+    echo -e "${BOLD}└─────────────────────────────────────────────────────────┘${NC}"
+    echo ""
+
+    echo -e "${BOLD}Main Menu:${NC}"
+    echo ""
+    echo -e "  ${CYAN}─── Installation ───${NC}"
     echo "  1) Install/Update Reticulum Ecosystem"
     echo "  2) Install/Configure RNODE Device"
     echo "  3) Install NomadNet"
     echo "  4) Install MeshChat"
     echo "  5) Install Sideband"
+    echo ""
+    echo -e "  ${CYAN}─── Management ───${NC}"
     echo "  6) System Status & Diagnostics"
     echo "  7) Manage Services"
     echo "  8) Backup/Restore Configuration"
     echo "  9) Advanced Options"
+    echo ""
+    echo -e "  ${CYAN}─── System ───${NC}"
     echo "  0) Exit"
     echo ""
-    echo -n "Select an option: "
+    echo -e "${YELLOW}Tip:${NC} Run option 6 for detailed system diagnostics"
+    echo ""
+    echo -n "Select an option [0-9]: "
     read -r MENU_CHOICE
 }
 
@@ -508,7 +540,10 @@ configure_rnode_interactive() {
             echo -n "Device port: "
             read -r DEVICE_PORT
 
-            if [ ! -e "$DEVICE_PORT" ]; then
+            # Validate device port - prevent path traversal and injection
+            if [[ ! "$DEVICE_PORT" =~ ^/dev/tty[A-Za-z0-9]+$ ]]; then
+                print_error "Invalid device port format. Expected: /dev/ttyUSB0 or /dev/ttyACM0"
+            elif [ ! -e "$DEVICE_PORT" ]; then
                 print_error "Device not found: $DEVICE_PORT"
             else
                 echo ""
@@ -516,37 +551,67 @@ configure_rnode_interactive() {
                 echo "Leave blank to keep current value"
                 echo ""
 
-                # Build command with optional parameters
-                CMD="rnodeconf $DEVICE_PORT"
+                # Build command with optional parameters using arrays (safer than eval)
+                declare -a CMD_ARGS=("$DEVICE_PORT")
 
-                # Frequency
+                # Frequency (validate numeric input)
                 echo -n "Frequency in Hz (e.g., 915000000 for 915MHz): "
                 read -r FREQ
-                [ -n "$FREQ" ] && CMD="$CMD --freq $FREQ"
+                if [ -n "$FREQ" ]; then
+                    if [[ "$FREQ" =~ ^[0-9]+$ ]]; then
+                        CMD_ARGS+=("--freq" "$FREQ")
+                    else
+                        print_warning "Invalid frequency - must be numeric. Skipping."
+                    fi
+                fi
 
-                # Bandwidth
+                # Bandwidth (validate numeric input)
                 echo -n "Bandwidth in kHz (e.g., 125, 250, 500): "
                 read -r BW
-                [ -n "$BW" ] && CMD="$CMD --bw $BW"
+                if [ -n "$BW" ]; then
+                    if [[ "$BW" =~ ^[0-9]+$ ]]; then
+                        CMD_ARGS+=("--bw" "$BW")
+                    else
+                        print_warning "Invalid bandwidth - must be numeric. Skipping."
+                    fi
+                fi
 
-                # Spreading Factor
+                # Spreading Factor (validate range 7-12)
                 echo -n "Spreading Factor (7-12): "
                 read -r SF
-                [ -n "$SF" ] && CMD="$CMD --sf $SF"
+                if [ -n "$SF" ]; then
+                    if [[ "$SF" =~ ^[0-9]+$ ]] && [ "$SF" -ge 7 ] && [ "$SF" -le 12 ]; then
+                        CMD_ARGS+=("--sf" "$SF")
+                    else
+                        print_warning "Invalid spreading factor - must be 7-12. Skipping."
+                    fi
+                fi
 
-                # Coding Rate
+                # Coding Rate (validate range 5-8)
                 echo -n "Coding Rate (5-8): "
                 read -r CR
-                [ -n "$CR" ] && CMD="$CMD --cr $CR"
+                if [ -n "$CR" ]; then
+                    if [[ "$CR" =~ ^[0-9]+$ ]] && [ "$CR" -ge 5 ] && [ "$CR" -le 8 ]; then
+                        CMD_ARGS+=("--cr" "$CR")
+                    else
+                        print_warning "Invalid coding rate - must be 5-8. Skipping."
+                    fi
+                fi
 
-                # TX Power
+                # TX Power (validate reasonable dBm range)
                 echo -n "TX Power in dBm (e.g., 17): "
                 read -r TXP
-                [ -n "$TXP" ] && CMD="$CMD --txp $TXP"
+                if [ -n "$TXP" ]; then
+                    if [[ "$TXP" =~ ^-?[0-9]+$ ]] && [ "$TXP" -ge -10 ] && [ "$TXP" -le 30 ]; then
+                        CMD_ARGS+=("--txp" "$TXP")
+                    else
+                        print_warning "Invalid TX power - must be between -10 and 30 dBm. Skipping."
+                    fi
+                fi
 
                 echo ""
-                print_info "Executing: $CMD"
-                eval "$CMD" 2>&1 | tee -a "$UPDATE_LOG"
+                print_info "Executing: rnodeconf ${CMD_ARGS[*]}"
+                rnodeconf "${CMD_ARGS[@]}" 2>&1 | tee -a "$UPDATE_LOG"
             fi
             ;;
         7)
@@ -555,7 +620,10 @@ configure_rnode_interactive() {
             echo -n "Device port: "
             read -r DEVICE_PORT
 
-            if [ ! -e "$DEVICE_PORT" ]; then
+            # Validate device port
+            if [[ ! "$DEVICE_PORT" =~ ^/dev/tty[A-Za-z0-9]+$ ]]; then
+                print_error "Invalid device port format. Expected: /dev/ttyUSB0 or /dev/ttyACM0"
+            elif [ ! -e "$DEVICE_PORT" ]; then
                 print_error "Device not found: $DEVICE_PORT"
             else
                 echo ""
@@ -572,13 +640,30 @@ configure_rnode_interactive() {
                 echo -n "Platform (e.g., esp32, rp2040): "
                 read -r PLATFORM
 
-                CMD="rnodeconf $DEVICE_PORT"
-                [ -n "$MODEL" ] && CMD="$CMD --model $MODEL"
-                [ -n "$PLATFORM" ] && CMD="$CMD --platform $PLATFORM"
+                # Build command with array (safer than eval)
+                declare -a CMD_ARGS=("$DEVICE_PORT")
+
+                # Validate model (alphanumeric and underscores only)
+                if [ -n "$MODEL" ]; then
+                    if [[ "$MODEL" =~ ^[a-zA-Z0-9_]+$ ]]; then
+                        CMD_ARGS+=("--model" "$MODEL")
+                    else
+                        print_warning "Invalid model name. Skipping."
+                    fi
+                fi
+
+                # Validate platform (alphanumeric only)
+                if [ -n "$PLATFORM" ]; then
+                    if [[ "$PLATFORM" =~ ^[a-zA-Z0-9]+$ ]]; then
+                        CMD_ARGS+=("--platform" "$PLATFORM")
+                    else
+                        print_warning "Invalid platform name. Skipping."
+                    fi
+                fi
 
                 echo ""
-                print_info "Executing: $CMD"
-                eval "$CMD" 2>&1 | tee -a "$UPDATE_LOG"
+                print_info "Executing: rnodeconf ${CMD_ARGS[*]}"
+                rnodeconf "${CMD_ARGS[@]}" 2>&1 | tee -a "$UPDATE_LOG"
             fi
             ;;
         8)
@@ -999,7 +1084,8 @@ show_service_status() {
 
     # Check rnodeconf
     if command -v rnodeconf &> /dev/null; then
-        RNODE_VER=$(rnodeconf --version 2>&1 | head -1 | grep -oP '\d+\.\d+\.\d+' || echo "installed")
+        RNODE_VER=$(rnodeconf --version 2>&1 | head -1 | sed -n 's/.*\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p' || echo "installed")
+        [ -z "$RNODE_VER" ] && RNODE_VER="installed"
         print_success "rnodeconf: $RNODE_VER"
     else
         print_info "rnodeconf: Not installed"
@@ -1092,7 +1178,7 @@ restore_backup() {
     local i=1
     for backup in "${backups[@]}"; do
         local backup_name=$(basename "$backup")
-        local backup_date=$(echo "$backup_name" | grep -oP '\d{8}_\d{6}')
+        local backup_date=$(echo "$backup_name" | sed -n 's/.*\([0-9]\{8\}_[0-9]\{6\}\).*/\1/p')
         echo "  $i) $backup_date"
         ((i++))
     done
@@ -1234,6 +1320,101 @@ advanced_menu() {
                 print_info "Cleaning pip cache..."
                 $PIP_CMD cache purge 2>&1 | tee -a "$UPDATE_LOG"
                 print_success "Cache cleaned"
+                pause_for_input
+                ;;
+            4)
+                print_section "Export Configuration"
+                EXPORT_FILE="$HOME/reticulum_config_export_$(date +%Y%m%d_%H%M%S).tar.gz"
+
+                echo -e "${YELLOW}This will create a portable backup of your configuration.${NC}"
+                echo ""
+
+                if [ -d "$HOME/.reticulum" ] || [ -d "$HOME/.nomadnetwork" ] || [ -d "$HOME/.lxmf" ]; then
+                    print_info "Creating export archive..."
+
+                    # Create temporary directory for export
+                    TEMP_EXPORT=$(mktemp -d)
+
+                    [ -d "$HOME/.reticulum" ] && cp -r "$HOME/.reticulum" "$TEMP_EXPORT/"
+                    [ -d "$HOME/.nomadnetwork" ] && cp -r "$HOME/.nomadnetwork" "$TEMP_EXPORT/"
+                    [ -d "$HOME/.lxmf" ] && cp -r "$HOME/.lxmf" "$TEMP_EXPORT/"
+
+                    if tar -czf "$EXPORT_FILE" -C "$TEMP_EXPORT" . 2>&1 | tee -a "$UPDATE_LOG"; then
+                        print_success "Configuration exported to: $EXPORT_FILE"
+                        log_message "Exported configuration to: $EXPORT_FILE"
+                    else
+                        print_error "Failed to create export archive"
+                    fi
+
+                    rm -rf "$TEMP_EXPORT"
+                else
+                    print_warning "No configuration files found to export"
+                fi
+                pause_for_input
+                ;;
+            5)
+                print_section "Import Configuration"
+                echo "Enter the path to the export archive (.tar.gz):"
+                echo -n "Archive path: "
+                read -r IMPORT_FILE
+
+                if [ ! -f "$IMPORT_FILE" ]; then
+                    print_error "File not found: $IMPORT_FILE"
+                elif [[ ! "$IMPORT_FILE" =~ \.tar\.gz$ ]]; then
+                    print_error "Invalid file format. Expected .tar.gz archive"
+                else
+                    echo -e "${RED}${BOLD}WARNING:${NC} This will overwrite your current configuration!"
+                    echo -n "Continue? (y/N): "
+                    read -r CONFIRM
+
+                    if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
+                        print_info "Creating backup of current configuration..."
+                        create_backup
+
+                        print_info "Importing configuration..."
+                        if tar -xzf "$IMPORT_FILE" -C "$HOME" 2>&1 | tee -a "$UPDATE_LOG"; then
+                            print_success "Configuration imported successfully"
+                            log_message "Imported configuration from: $IMPORT_FILE"
+                        else
+                            print_error "Failed to import configuration"
+                        fi
+                    else
+                        print_info "Import cancelled"
+                    fi
+                fi
+                pause_for_input
+                ;;
+            6)
+                print_section "Reset to Factory Defaults"
+                echo -e "${RED}${BOLD}╔════════════════════════════════════════════════════════╗${NC}"
+                echo -e "${RED}${BOLD}║                      WARNING!                          ║${NC}"
+                echo -e "${RED}${BOLD}║   This will DELETE all Reticulum configuration!        ║${NC}"
+                echo -e "${RED}${BOLD}║   Your identities and messages will be LOST forever!   ║${NC}"
+                echo -e "${RED}${BOLD}╚════════════════════════════════════════════════════════╝${NC}"
+                echo ""
+                echo "This will remove:"
+                echo "  • ~/.reticulum/     (identities, keys, config)"
+                echo "  • ~/.nomadnetwork/  (NomadNet data)"
+                echo "  • ~/.lxmf/          (messages)"
+                echo ""
+                echo -n "Type 'RESET' to confirm factory reset: "
+                read -r CONFIRM
+
+                if [ "$CONFIRM" = "RESET" ]; then
+                    print_info "Creating final backup before reset..."
+                    create_backup
+
+                    print_info "Removing configuration directories..."
+                    [ -d "$HOME/.reticulum" ] && rm -rf "$HOME/.reticulum" && print_success "Removed ~/.reticulum"
+                    [ -d "$HOME/.nomadnetwork" ] && rm -rf "$HOME/.nomadnetwork" && print_success "Removed ~/.nomadnetwork"
+                    [ -d "$HOME/.lxmf" ] && rm -rf "$HOME/.lxmf" && print_success "Removed ~/.lxmf"
+
+                    print_success "Factory reset complete"
+                    print_info "Run 'rnsd --daemon' to create fresh configuration"
+                    log_message "Factory reset performed - all configurations removed"
+                else
+                    print_info "Reset cancelled - confirmation not received"
+                fi
                 pause_for_input
                 ;;
             7)
