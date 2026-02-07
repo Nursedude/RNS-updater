@@ -233,8 +233,15 @@ function Write-ColorOutput {
         [string]$Type = "Info"
     )
 
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    "$timestamp - $Type - $Message" | Out-File -FilePath $Script:LogFile -Append
+    # Route through Write-Log for consistent leveled logging
+    $logLevel = switch ($Type) {
+        "Error"   { "ERROR" }
+        "Warning" { "WARN" }
+        "Success" { "INFO" }
+        "Progress" { "INFO" }
+        default   { "INFO" }
+    }
+    Write-Log "$Type - $Message" $logLevel
 
     switch ($Type) {
         "Success" {
@@ -704,7 +711,7 @@ function Show-Diagnostics {
 
     # Reticulum config
     Write-Host "Reticulum Configuration:" -ForegroundColor Cyan
-    $reticulumDir = Join-Path $env:USERPROFILE ".reticulum"
+    $reticulumDir = Join-Path $Script:RealHome ".reticulum"
     if (Test-Path $reticulumDir) {
         Write-ColorOutput "Config directory exists: $reticulumDir" "Success"
     } else {
@@ -841,14 +848,14 @@ function Clear-CacheFiles {
 function Export-Configuration {
     Show-Section "Export Configuration"
 
-    $exportFile = Join-Path $env:USERPROFILE "reticulum_config_export_$(Get-Date -Format 'yyyyMMdd_HHmmss').zip"
+    $exportFile = Join-Path $Script:RealHome "reticulum_config_export_$(Get-Date -Format 'yyyyMMdd_HHmmss').zip"
 
     Write-ColorOutput "This will create a portable backup of your configuration" "Info"
     Write-Host ""
 
-    $reticulumDir = Join-Path $env:USERPROFILE ".reticulum"
-    $nomadDir = Join-Path $env:USERPROFILE ".nomadnetwork"
-    $lxmfDir = Join-Path $env:USERPROFILE ".lxmf"
+    $reticulumDir = Join-Path $Script:RealHome ".reticulum"
+    $nomadDir = Join-Path $Script:RealHome ".nomadnetwork"
+    $lxmfDir = Join-Path $Script:RealHome ".lxmf"
 
     $hasConfig = $false
     if ((Test-Path $reticulumDir) -or (Test-Path $nomadDir) -or (Test-Path $lxmfDir)) {
@@ -885,7 +892,7 @@ function Export-Configuration {
     Remove-Item -Path $tempExport -Recurse -Force
 
     Write-ColorOutput "Configuration exported to: $exportFile" "Success"
-    "Exported configuration to: $exportFile" | Out-File -FilePath $Script:LogFile -Append
+    Write-Log "Exported configuration to: $exportFile" "INFO"
 
     pause
 }
@@ -935,7 +942,7 @@ function Import-Configuration {
 
         if ($hasInvalidPaths) {
             Write-ColorOutput "Security: Archive contains invalid paths (traversal attempt)" "Error"
-            "SECURITY: Rejected archive with invalid paths: $importFile" | Out-File -FilePath $Script:LogFile -Append
+            Write-Log "SECURITY: Rejected archive with invalid paths: $importFile" "ERROR"
             pause
             return
         }
@@ -981,7 +988,7 @@ function Import-Configuration {
 
         # Copy to user profile
         Get-ChildItem -Path $tempImport -Directory | ForEach-Object {
-            $dest = Join-Path $env:USERPROFILE $_.Name
+            $dest = Join-Path $Script:RealHome $_.Name
             Copy-Item -Path $_.FullName -Destination $dest -Recurse -Force
         }
 
@@ -989,7 +996,7 @@ function Import-Configuration {
         Remove-Item -Path $tempImport -Recurse -Force
 
         Write-ColorOutput "Configuration imported successfully" "Success"
-        "Imported configuration from: $importFile" | Out-File -FilePath $Script:LogFile -Append
+        Write-Log "Imported configuration from: $importFile" "INFO"
     }
     catch {
         Write-ColorOutput "Failed to import configuration: $_" "Error"
@@ -1026,9 +1033,9 @@ function Reset-ToFactory {
 
     Write-ColorOutput "Removing configuration directories..." "Progress"
 
-    $reticulumDir = Join-Path $env:USERPROFILE ".reticulum"
-    $nomadDir = Join-Path $env:USERPROFILE ".nomadnetwork"
-    $lxmfDir = Join-Path $env:USERPROFILE ".lxmf"
+    $reticulumDir = Join-Path $Script:RealHome ".reticulum"
+    $nomadDir = Join-Path $Script:RealHome ".nomadnetwork"
+    $lxmfDir = Join-Path $Script:RealHome ".lxmf"
 
     if (Test-Path $reticulumDir) {
         Remove-Item -Path $reticulumDir -Recurse -Force
@@ -1047,7 +1054,7 @@ function Reset-ToFactory {
 
     Write-ColorOutput "Factory reset complete" "Success"
     Write-ColorOutput "Run 'rnsd --daemon' to create fresh configuration" "Info"
-    "Factory reset performed - all configurations removed" | Out-File -FilePath $Script:LogFile -Append
+    Write-Log "Factory reset performed - all configurations removed" "WARN"
 
     pause
 }
@@ -1211,9 +1218,9 @@ function Stop-RNSDaemon {
 function New-Backup {
     Show-Section "Creating Backup"
 
-    $reticulumDir = Join-Path $env:USERPROFILE ".reticulum"
-    $nomadDir = Join-Path $env:USERPROFILE ".nomadnetwork"
-    $lxmfDir = Join-Path $env:USERPROFILE ".lxmf"
+    $reticulumDir = Join-Path $Script:RealHome ".reticulum"
+    $nomadDir = Join-Path $Script:RealHome ".nomadnetwork"
+    $lxmfDir = Join-Path $Script:RealHome ".lxmf"
 
     $backedUp = $false
 
@@ -1249,7 +1256,7 @@ function New-Backup {
 function Restore-Backup {
     Show-Section "Restore Backup"
 
-    $backups = Get-ChildItem -Path $env:USERPROFILE -Directory -Filter ".reticulum_backup_*" | Sort-Object LastWriteTime -Descending
+    $backups = Get-ChildItem -Path $Script:RealHome -Directory -Filter ".reticulum_backup_*" | Sort-Object LastWriteTime -Descending
 
     if ($backups.Count -eq 0) {
         Write-ColorOutput "No backups found" "Warning"
@@ -1280,7 +1287,7 @@ function Restore-Backup {
 
         $items = Get-ChildItem -Path $selectedBackup.FullName -Directory
         foreach ($item in $items) {
-            $dest = Join-Path $env:USERPROFILE $item.Name
+            $dest = Join-Path $Script:RealHome $item.Name
             Copy-Item -Path $item.FullName -Destination $dest -Recurse -Force
         }
 

@@ -1459,16 +1459,16 @@ install_meshchat() {
             # Create launcher
             create_meshchat_launcher
 
-            popd > /dev/null
+            popd > /dev/null || true
             return 0
         else
             print_error "Failed to build MeshChat"
-            popd > /dev/null
+            popd > /dev/null || true
             return 1
         fi
     else
         print_error "Failed to install dependencies"
-        popd > /dev/null
+        popd > /dev/null || true
         return 1
     fi
 }
@@ -1652,11 +1652,11 @@ install_sideband_source() {
     if run_with_timeout "$PIP_TIMEOUT" $PIP_CMD install . --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
         print_success "Sideband installed from source"
         create_sideband_launcher
-        popd > /dev/null
+        popd > /dev/null || true
         return 0
     else
         print_error "Failed to install Sideband from source"
-        popd > /dev/null
+        popd > /dev/null || true
         return 1
     fi
 }
@@ -2333,8 +2333,10 @@ restore_backup() {
 
     local i=1
     for backup in "${backups[@]}"; do
-        local backup_name=$(basename "$backup")
-        local backup_date=$(echo "$backup_name" | sed -n 's/.*\([0-9]\{8\}_[0-9]\{6\}\).*/\1/p')
+        local backup_name
+        backup_name=$(basename "$backup")
+        local backup_date
+        backup_date=$(echo "$backup_name" | sed -n 's/.*\([0-9]\{8\}_[0-9]\{6\}\).*/\1/p')
         echo "  $i) $backup_date"
         ((i++))
     done
